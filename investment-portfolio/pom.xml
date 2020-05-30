@@ -16,6 +16,7 @@
 
 	<properties>
 		<java.version>11</java.version>
+		<vavr.version>0.10.3</vavr.version>
 	</properties>
 
 	<dependencies>
@@ -26,6 +27,11 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webflux</artifactId>
+		</dependency>
+		<dependency>
+        	<groupId>io.vavr</groupId>
+        	<artifactId>vavr</artifactId>
+        	<version>${vavr.version}</version>
 		</dependency>
 
 		<dependency>
