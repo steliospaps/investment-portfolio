@@ -12,6 +12,9 @@ import io.github.steliospaps.experimental.investment.invest.model.Portfolio;
 import io.github.steliospaps.experimental.investment.invest.model.PortfolioItem;
 import io.vavr.collection.List;
 
+//https://github.com/cucumber/cucumber-jvm/blob/master/examples/java8-calculator/src/test/java/io/cucumber/examples/java8/ShoppingSteps.java
+//https://cucumber.io/docs/gherkin/reference/
+//
 public class PortfolioSteps implements En{
 	private Map<String, Portfolio> portfolios=new HashMap<>();
 	private Map<String, Fund.FundBuilder> funds=new HashMap<>();
