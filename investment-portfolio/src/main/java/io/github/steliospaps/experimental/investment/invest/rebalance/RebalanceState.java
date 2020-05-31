@@ -10,4 +10,6 @@ import lombok.Value;
 public class RebalanceState {
 	@Default
 	private List<Fund> funds = List.empty();
+	@Default
+	private List<MarketPrice> marketPrices = List.empty();
 }

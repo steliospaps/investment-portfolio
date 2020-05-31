@@ -32,4 +32,20 @@ Feature: Simple rebalance actions
     	|instrumentId|
     	|instrument1|
     	|instrument2|
-  
+ 
+   Scenario: Market Prices that are there are not requested
+  	Given market prices:
+  		|instrumentId|bid|ask|
+  		|instrument1|0.9|1.1|
+    Given a portfolio portfolio1 with targets:
+    	|instrumentId|ratio|
+    	|instrument1|0.4|
+    	|instrument2|0.6|
+    And fund fund1 with portfolio portfolio1
+    And that fund fund1 has 100.0 available to invest
+    When the rebalancer runs
+    Then there are no allocations
+    And market prices are requested for:
+    	|instrumentId|
+    	|instrument2|
+    	
