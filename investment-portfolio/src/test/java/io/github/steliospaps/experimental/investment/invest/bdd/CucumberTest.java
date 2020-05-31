@@ -11,9 +11,9 @@ import io.cucumber.junit.CucumberOptions;
  * To run cucumber test.
  */
 @RunWith(Cucumber.class)
-@CucumberOptions(features = "classpath:features", //
+@CucumberOptions( features = "classpath:features",
 		strict = true, //
-		plugin = { "pretty", "json:target/cucumber-report.json" })
+		plugin = {"html:target/cucumber-report.html","pretty", "json:target/cucumber-report.json" })
 public class CucumberTest {
 
 }

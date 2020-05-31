@@ -1,4 +1,4 @@
-package io.github.steliospaps.experimental.investment.invest.model;
+package io.github.steliospaps.experimental.investment.invest.rebalance;
 
 import java.math.BigDecimal;
 

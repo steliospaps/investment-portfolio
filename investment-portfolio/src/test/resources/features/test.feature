@@ -16,11 +16,9 @@
 #""
 ## (Comments)
 #Sample Feature Definition Template
-@tag
-Feature: Title of your feature
+Feature: Simple rebalance actions
   I want to use this template for my feature file
 	
-  @tag1
   Scenario: Market Prices are requested
     Given a portfolio portfolio1 with targets:
     	|instrumentId|ratio|
@@ -28,3 +26,10 @@ Feature: Title of your feature
     	|instrument2|0.6|
     And fund fund1 with portfolio portfolio1
     And that fund fund1 has 100.0 available to invest
+    When the rebalancer runs
+    Then there are no allocations
+    And market prices are requested for:
+    	|instrumentId|
+    	|instrument1|
+    	|instrument2|
+  

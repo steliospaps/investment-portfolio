@@ -1,46 +1,72 @@
 package io.github.steliospaps.experimental.investment.invest.bdd;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+
 import java.math.BigDecimal;
-import java.util.Map;
 import java.util.Optional;
-import java.util.HashMap;
+
+import org.springframework.beans.factory.annotation.Autowired;
 
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java8.En;
-import io.github.steliospaps.experimental.investment.invest.model.Fund;
-import io.github.steliospaps.experimental.investment.invest.model.Portfolio;
-import io.github.steliospaps.experimental.investment.invest.model.PortfolioItem;
+import io.github.steliospaps.experimental.investment.invest.rebalance.Fund;
+import io.github.steliospaps.experimental.investment.invest.rebalance.MarketPriceRequest;
+import io.github.steliospaps.experimental.investment.invest.rebalance.Portfolio;
+import io.github.steliospaps.experimental.investment.invest.rebalance.PortfolioItem;
+import io.github.steliospaps.experimental.investment.invest.rebalance.RebalanceActions;
+import io.github.steliospaps.experimental.investment.invest.rebalance.RebalanceState;
+import io.github.steliospaps.experimental.investment.invest.rebalance.Rebalancer;
+import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
+import io.vavr.collection.Map;
 
 //https://github.com/cucumber/cucumber-jvm/blob/master/examples/java8-calculator/src/test/java/io/cucumber/examples/java8/ShoppingSteps.java
 //https://cucumber.io/docs/gherkin/reference/
-//
-public class PortfolioSteps implements En{
-	private Map<String, Portfolio> portfolios=new HashMap<>();
-	private Map<String, Fund.FundBuilder> funds=new HashMap<>();
+//https://github.com/cucumber/cucumber/tree/master/datatable
+public class PortfolioSteps implements En {
+	private Map<String, Portfolio> portfolios = HashMap.empty();
+	private Map<String, Fund.FundBuilder> funds = HashMap.empty();
+	private RebalanceActions rebalanceResult;
 
-	public PortfolioSteps() {
-	
-		DataTableType((Map<String, String> row) -> PortfolioItem.of(
-	            row.get("instrumentId"),
-	            new BigDecimal(row.get("ratio"))));
-		
-		Given("a portfolio {word} with targets:", 
-				(String portfolioId, DataTable dt)->{
-					List<PortfolioItem> portfolioItems = List.ofAll(dt.asList(PortfolioItem.class));
-					portfolios.put(portfolioId,Portfolio.of(portfolioItems));
-				});
-		
+	@Autowired
+	public PortfolioSteps(Rebalancer rebalancer) {
+
+		DataTableType((java.util.Map<String, String> row) -> PortfolioItem.of(row.get("instrumentId"),
+				new BigDecimal(row.get("ratio"))));
+
+		DataTableType((java.util.Map<String, String> row) -> MarketPriceRequest.of(row.get("instrumentId")));
+
+		Given("a portfolio {word} with targets:", (String portfolioId, DataTable dt) -> {
+			List<PortfolioItem> portfolioItems = List.ofAll(dt.asList(PortfolioItem.class));
+			portfolios = portfolios.put(portfolioId, Portfolio.of(portfolioItems));
+		});
+
 		Given("fund {word} with portfolio {word}", (String fundId, String portfolioId) -> {
-			funds.put(fundId, Fund.builder()//
-					.portfolio(Optional.ofNullable(portfolios.get(portfolioId)).get()));
-		});  
-		
-		Given("that fund {word} has {bigdecimal} available to invest", (String fundId, BigDecimal available) -> {                                                                            
-			funds.get(fundId).availableToInvest(available);
-		});      
-		//TODO: actually test this
-		
-		
+			funds = funds.put(fundId, Fund.builder()//
+					.portfolio(portfolios.get(portfolioId).get()));
+		});
+
+		Given("that fund {word} has {bigdecimal} available to invest", (String fundId, BigDecimal available) -> {
+			funds.get(fundId).get().availableToInvest(available);
+		});
+
+		When("the rebalancer runs", () -> {
+			rebalanceResult = rebalancer.rebalance(RebalanceState.builder()//
+					.funds(funds.values().map(Fund.FundBuilder::build).toList())//
+					.build());
+		});
+
+		Then("there are no allocations", () -> {
+			assertEquals(0, rebalanceResult.getAllocations().size());
+		});
+		Then("there are no market price requests", () -> {
+			assertEquals(0, rebalanceResult.getMarketPriceRequests().size());
+		});
+		Then("market prices are requested for:", (DataTable dt) -> {
+
+			assertEquals(dt.asList(MarketPriceRequest.class), 
+					rebalanceResult.getMarketPriceRequests().toJavaList());
+		});
 	}
 }

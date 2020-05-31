@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.test.context.ContextConfiguration;
 
+import io.cucumber.spring.CucumberContextConfiguration;
 import io.github.steliospaps.experimental.investment.invest.InvestmentPortfolioApplication;
 
 /**
@@ -15,6 +16,7 @@ import io.github.steliospaps.experimental.investment.invest.InvestmentPortfolioA
  */
 @SpringBootTest(webEnvironment = WebEnvironment.DEFINED_PORT)
 @ContextConfiguration(classes = InvestmentPortfolioApplication.class, loader = SpringBootContextLoader.class)
+@CucumberContextConfiguration
 public class CucumberSpringContextConfiguration {
 
   private static final Logger LOG = LoggerFactory.getLogger(CucumberSpringContextConfiguration.class);
