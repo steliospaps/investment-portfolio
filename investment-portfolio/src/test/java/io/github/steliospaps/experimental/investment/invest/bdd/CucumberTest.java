@@ -13,7 +13,6 @@ import io.cucumber.junit.CucumberOptions;
 @RunWith(Cucumber.class)
 @CucumberOptions( features = "classpath:features",
 		strict = true, //
-		glue= {"io.github.steliospaps.experimental.investment.invest.bdd"},//
 		plugin = {"html:target/cucumber-report.html","pretty", "json:target/cucumber-report.json" })
 public class CucumberTest {
 
