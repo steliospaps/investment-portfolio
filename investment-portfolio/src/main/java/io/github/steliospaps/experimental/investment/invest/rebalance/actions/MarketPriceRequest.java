@@ -1,4 +1,4 @@
-package io.github.steliospaps.experimental.investment.invest.rebalance;
+package io.github.steliospaps.experimental.investment.invest.rebalance.actions;
 
 import lombok.Value;
 

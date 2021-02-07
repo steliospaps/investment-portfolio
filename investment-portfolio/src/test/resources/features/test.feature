@@ -18,50 +18,69 @@
 #Sample Feature Definition Template
 Feature: Simple rebalance actions
   I want to use this template for my feature file
-	
+
+  Background: 
+    Given config:
+      | maximumTolerableCash          |  0.99 |
+      | maximumTolerableVarianceRatio | 0.005 |
+      | overSizeQuoteRatio            |   0.2 |
+    And a portfolio portfolio1 with targets:
+      | instrumentId | ratio |
+      | instrument1  |   0.4 |
+      | instrument2  |   0.6 |
+    And fractional account with:
+      | instrumentId | quantity |
+      | instrument1  |      0.0 |
+      | instrument2  |      0.0 |
+
   Scenario: Market Prices are requested
-    Given a portfolio portfolio1 with targets:
-    	|instrumentId|ratio|
-    	|instrument1|0.4|
-    	|instrument2|0.6|
-    And fund fund1 with portfolio portfolio1
+    Given fund fund1 with portfolio portfolio1
     And that fund fund1 has 100.0 available to invest
     When the rebalancer runs
     Then there are no allocations
     And market prices are requested for:
-    	|instrumentId|
-    	|instrument1|
-    	|instrument2|
- 
-   Scenario: Market Prices that are there are not requested
-  	Given market prices:
-  		|instrumentId|bid|ask|
-  		|instrument1|0.9|1.1|
-    Given a portfolio portfolio1 with targets:
-    	|instrumentId|ratio|
-    	|instrument1|0.4|
-    	|instrument2|0.6|
+      | instrumentId |
+      | instrument1  |
+      | instrument2  |
+
+  Scenario: Market Prices that are there are not requested
+    Given market prices:
+      | instrumentId | bid | ask |
+      | instrument1  | 0.9 | 1.1 |
     And fund fund1 with portfolio portfolio1
     And that fund fund1 has 100.0 available to invest
     When the rebalancer runs
     Then there are no allocations
     And rebalancer is not done
     And market prices are requested for:
-    	|instrumentId|
-    	|instrument2|
+      | instrumentId |
+      | instrument2  |
 
-   Scenario: 
-  	Given market prices:
-  		|instrumentId|bid|ask|
-  		|instrument1|0.9|1.1|
-  		|instrument1|0.8|1.0|
-    Given a portfolio portfolio1 with targets:
-    	|instrumentId|ratio|
-    	|instrument1|0.4|
-    	|instrument2|0.6|
+  Scenario: amount to invest is too small to trigger trade
+    Given market prices:
+      | instrumentId | bid | ask |
+      | instrument1  | 0.9 | 1.1 |
+      | instrument1  | 0.8 | 1.0 |
     And fund fund1 with portfolio portfolio1
-    And that fund fund1 has 0.0 available to invest
+    And that fund fund1 has 0.99 available to invest
     When the rebalancer runs
     Then there are no allocations
     And rebalancer is done
-    	
+
+  Scenario: Request of Quotes. at 40%-60% split with asks 1,2 100GBP will be invested \
+  	as 25GBP,75GBP quotes are required to buy 25,37.5 +20%+roundup = 30,45 
+    Given market prices:
+      | instrumentId | bid | ask |
+      | instrument1  | 0.9 | 1.0 |
+      | instrument2  | 0.8 | 2.0 |
+    And fund fund1 with portfolio portfolio1
+    And that fund fund1 has 100.00 available to invest
+    When the rebalancer runs
+    Then there are no allocations
+    And market quotes are requested for:
+      | instrumentId | quantity |
+      | instrument1  |       30 |
+      | instrument2  |       45 |
+    And rebalancer is not done
+    
+    #TODO: net sell and crossing

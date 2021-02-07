@@ -1,23 +1,31 @@
 package io.github.steliospaps.experimental.investment.invest.bdd;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static io.vavr.Predicates.*;
+import static io.vavr.API.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
-
 import org.springframework.beans.factory.annotation.Autowired;
 
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java8.En;
-import io.github.steliospaps.experimental.investment.invest.rebalance.Fund;
-import io.github.steliospaps.experimental.investment.invest.rebalance.MarketPrice;
-import io.github.steliospaps.experimental.investment.invest.rebalance.MarketPriceRequest;
-import io.github.steliospaps.experimental.investment.invest.rebalance.Portfolio;
-import io.github.steliospaps.experimental.investment.invest.rebalance.PortfolioItem;
-import io.github.steliospaps.experimental.investment.invest.rebalance.RebalanceActions;
-import io.github.steliospaps.experimental.investment.invest.rebalance.RebalanceResult;
-import io.github.steliospaps.experimental.investment.invest.rebalance.RebalanceState;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.FractionalAccount;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.Fund;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.MarketPrice;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.Portfolio;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.PortfolioItem;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceConfig;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceState;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.SystemAccountStockItem;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceConfig.RebalanceConfigBuilder;
 import io.github.steliospaps.experimental.investment.invest.rebalance.Rebalancer;
+import io.github.steliospaps.experimental.investment.invest.rebalance.actions.MarketPriceRequest;
+import io.github.steliospaps.experimental.investment.invest.rebalance.actions.MarketPriceRequests;
+import io.github.steliospaps.experimental.investment.invest.rebalance.actions.QuoteRequest;
+import io.github.steliospaps.experimental.investment.invest.rebalance.actions.QuoteRequests;
+import io.github.steliospaps.experimental.investment.invest.rebalance.actions.RebalanceActions;
+import io.github.steliospaps.experimental.investment.invest.rebalance.result.RebalanceResult;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 import io.vavr.collection.Map;
@@ -29,10 +37,11 @@ import io.vavr.control.Either;
 public class PortfolioSteps implements En {
 	private Map<String, Portfolio> portfolios = HashMap.empty();
 	private Map<String, Fund.FundBuilder> funds = HashMap.empty();
+	private Map<String, String> config = HashMap.empty();
 	private List<MarketPrice> marketPrices = List.empty();
 	private Either<RebalanceActions, RebalanceResult> rebalanceResult;
+	private FractionalAccount fractionalAccount = FractionalAccount.builder().build();
 
-	
 	@Autowired
 	public PortfolioSteps(Rebalancer rebalancer) {
 
@@ -40,13 +49,22 @@ public class PortfolioSteps implements En {
 				new BigDecimal(row.get("ratio"))));
 
 		DataTableType((java.util.Map<String, String> row) -> MarketPriceRequest.of(row.get("instrumentId")));
-		
-		DataTableType((java.util.Map<String, String> row) -> MarketPrice.of(
-				row.get("instrumentId"),
-				new BigDecimal(row.get("bid")),
-				new BigDecimal(row.get("ask"))
-				));
-		
+
+		DataTableType((java.util.Map<String, String> row) -> QuoteRequest
+				.of(row.get("instrumentId"),Integer.parseInt(row.get("quantity"))));
+
+		DataTableType((java.util.Map<String, String> row) -> MarketPrice.of(row.get("instrumentId"),
+				new BigDecimal(row.get("bid")), new BigDecimal(row.get("ask"))));
+
+		DataTableType((java.util.Map<String, String> row) -> SystemAccountStockItem.builder()
+				.instrumentId(row.get("instrumentId"))//
+				.quantity(new BigDecimal(row.get("quantity"))).build());
+
+		Given("fractional account with:", (DataTable dt) -> {
+			fractionalAccount = FractionalAccount.builder().stock(List.ofAll(dt.asList(SystemAccountStockItem.class)))
+					.build();
+		});
+
 		Given("a portfolio {word} with targets:", (String portfolioId, DataTable dt) -> {
 			List<PortfolioItem> portfolioItems = List.ofAll(dt.asList(PortfolioItem.class));
 			portfolios = portfolios.put(portfolioId, Portfolio.of(portfolioItems));
@@ -60,7 +78,11 @@ public class PortfolioSteps implements En {
 		Given("that fund {word} has {bigdecimal} available to invest", (String fundId, BigDecimal available) -> {
 			funds.get(fundId).get().availableToInvest(available);
 		});
-		
+
+		Given("config:", (DataTable dt) -> {
+			dt.asLists().stream().forEach(l -> config = config.put(l.get(0), l.get(1)));
+		});
+
 		Given("market prices:", (DataTable dataTable) -> {
 			marketPrices = List.ofAll(dataTable.asList(MarketPrice.class));
 		});
@@ -68,6 +90,8 @@ public class PortfolioSteps implements En {
 			rebalanceResult = rebalancer.rebalance(RebalanceState.builder()//
 					.funds(funds.values().map(Fund.FundBuilder::build).toList())//
 					.marketPrices(marketPrices)//
+					.config(toRebalancerConfig(config))//
+					.fractionalAccount(fractionalAccount)//
 					.build());
 		});
 
@@ -75,21 +99,63 @@ public class PortfolioSteps implements En {
 			assertEquals(0, (int) rebalanceResult.map(i -> i.getAllocations().size()).getOrElse(0));
 		});
 		Then("there are no market price requests", () -> {
-			assertEquals(0, (int) rebalanceResult.mapLeft(i-> i.getMarketPriceRequests().size()).swap().getOrElse(0));
+			assertEquals(0, (int) rebalanceResult.swap().map(i->
+			Match(i).of(
+					Case($(instanceOf(MarketPriceRequests.class)), j->j.getRequests().size()),
+					Case($(),j->0)
+					))//
+					.getOrElse(0));
 		});
+		
 		Then("market prices are requested for:", (DataTable dt) -> {
 
-			assertEquals(dt.asList(MarketPriceRequest.class), 
-					rebalanceResult.getLeft().getMarketPriceRequests().toJavaList());
+			assertEquals(dt.asList(MarketPriceRequest.class),
+					rebalanceResult.swap().map(i->
+					Match(i).of(
+							Case($(instanceOf(MarketPriceRequests.class)), j->j.getRequests().toJavaList()),
+							Case($(),j->List.of().toJavaList())
+							))//
+					.getOrElse(List.<RebalanceResult>of().toJavaList()));
+		});
+
+		Then("market quotes are requested for:", (DataTable dt) -> {
+
+			assertEquals(dt.asList(QuoteRequest.class),
+					rebalanceResult.swap().map(i->
+					Match(i).of(
+							Case($(instanceOf(QuoteRequests.class)), j->j.getRequests().toJavaList()),
+							Case($(),j->List.of().toJavaList())
+							))//
+					.getOrElse(List.<RebalanceResult>of().toJavaList()));
 		});
 
 		Then("rebalancer is not done", () -> {
-		    assertTrue(rebalanceResult.isLeft());
+			assertTrue(rebalanceResult.isLeft());
 		});
-		
+
 		Then("rebalancer is done", () -> {
 			assertTrue(rebalanceResult.isRight());
 		});
 
+	}
+
+	private RebalanceConfig toRebalancerConfig(Map<String, String> config2) {
+		return config2.toJavaStream().reduce(RebalanceConfig.builder(), (b, tup) -> {
+			switch (tup._1) {
+			case "maximumTolerableCash":
+				return b.maximumTolerableCash(new BigDecimal(tup._2));
+			case "maximumTolerableVarianceRatio":
+				return b.maximumTolerableVarianceRatio(new BigDecimal(tup._2));
+			case "overSizeQuoteRatio":
+				return b.overSizeQuoteRatio(new BigDecimal(tup._2));
+			default:
+				throw new RuntimeException("unknown config key " + tup._1 + " in toRebalancerConfig");
+			}
+		}, (u1, u2) -> combine(u1, u2))//
+				.build();
+	}
+
+	private RebalanceConfigBuilder combine(RebalanceConfigBuilder u1, RebalanceConfigBuilder u2) {
+		throw new RuntimeException("cannot combine");
 	}
 }

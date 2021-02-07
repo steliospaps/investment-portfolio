@@ -1,4 +1,4 @@
-package io.github.steliospaps.experimental.investment.invest.rebalance;
+package io.github.steliospaps.experimental.investment.invest.rebalance.actions;
 
 import io.vavr.collection.List;
 import lombok.Builder;
@@ -12,8 +12,8 @@ import lombok.Value;
  */
 @Value
 @Builder
-public class RebalanceActions {
+public class MarketPriceRequests implements RebalanceActions{
 	@Default
-	private List<MarketPriceRequest> marketPriceRequests=List.empty();
+	private List<MarketPriceRequest> requests=List.empty();
 	
 }

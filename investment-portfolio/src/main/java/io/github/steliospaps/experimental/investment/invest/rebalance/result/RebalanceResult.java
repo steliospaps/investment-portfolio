@@ -1,4 +1,4 @@
-package io.github.steliospaps.experimental.investment.invest.rebalance;
+package io.github.steliospaps.experimental.investment.invest.rebalance.result;
 
 import io.vavr.collection.List;
 import lombok.Builder;
