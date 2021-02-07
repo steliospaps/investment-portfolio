@@ -1,5 +1,7 @@
 package io.github.steliospaps.experimental.investment.invest.rebalance;
 
+import io.vavr.control.Either;
+
 public interface Rebalancer {
-	RebalanceActions rebalance(RebalanceState current);
+Either<RebalanceActions, RebalanceResult> rebalance(RebalanceState current);
 }
