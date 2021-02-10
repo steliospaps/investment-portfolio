@@ -12,6 +12,7 @@ import io.github.steliospaps.experimental.investment.invest.rebalance.actions.Ma
 import io.github.steliospaps.experimental.investment.invest.rebalance.actions.QuoteRequest;
 import io.github.steliospaps.experimental.investment.invest.rebalance.actions.QuoteRequests;
 import io.github.steliospaps.experimental.investment.invest.rebalance.actions.RebalanceActions;
+import io.github.steliospaps.experimental.investment.invest.rebalance.result.Allocation;
 import io.github.steliospaps.experimental.investment.invest.rebalance.result.RebalanceResult;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.Fund;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.MarketPrice;
@@ -20,6 +21,8 @@ import io.github.steliospaps.experimental.investment.invest.rebalance.state.Port
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceConfig;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceState;
 import io.vavr.Tuple;
+import io.vavr.Tuple2;
+import io.vavr.Tuple3;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 import io.vavr.collection.Map;
@@ -33,76 +36,127 @@ public class RebalancerImpl implements Rebalancer {
 	 * math context were we try to get the least amount of money either buy or sell
 	 */
 	private static final MathContext MONEY_DOWN = new MathContext(2, RoundingMode.DOWN);
-	
+
 	/**
-	 * math context were we try to get the least amount of quantity either buy or sell
+	 * math context were we try to get the least amount of quantity either buy or
+	 * sell
 	 */
 	private static final MathContext QUANTITY_DOWN = new MathContext(7, RoundingMode.DOWN);
 
 	private static final MathContext QUOTE_REQUEST_UP = new MathContext(0, RoundingMode.UP);
-	
+
 	@Override
 	public Either<RebalanceActions, RebalanceResult> rebalance(RebalanceState current) {
-				
-		List<Fund> fundsRequiringActions = current.getFunds()
-				.filter(f -> fundNeedsAction(f, current.getConfig()));
-		if(fundsRequiringActions.isEmpty()) {
+
+		List<Fund> fundsRequiringActions = current.getFunds().filter(f -> fundNeedsAction(f, current.getConfig()));
+		if (fundsRequiringActions.isEmpty()) {
 			return Either.right(RebalanceResult.NOTHING);
 		} else {
-			return Either.<RebalanceActions, RebalanceState>right(current.toBuilder().funds(fundsRequiringActions).build())
-					.flatMap(c -> checkMissingPrices(c))//
-					.map(rebalanceState -> Tuple.of(rebalanceState, estimateAggregateDelta(rebalanceState)))//
-					.flatMap(c-> checkQuotes(c._1,c._2))//
-					.flatMap(c -> Either.right(RebalanceResult.NOTHING));
+			RebalanceState stateWithActiveFundsOnly = current.toBuilder().funds(fundsRequiringActions).build();
+			return allocate(stateWithActiveFundsOnly);
+			/*
+			 * return Either.<RebalanceActions,
+			 * RebalanceState>right(stateWithActiveFundsOnly) .flatMap(c -> allocate(c))//
+			 * .flatMap(c -> checkMissingPrices(c))// .map(rebalanceState ->
+			 * Tuple.of(rebalanceState, estimateAggregateDelta(rebalanceState)))//
+			 * .flatMap(c-> checkQuotes(c._1,c._2))// .flatMap(c ->
+			 * Either.right(RebalanceResult.NOTHING));
+			 */
 		}
-		
-		
-		
-		
+
+	}
+
+	private Either<RebalanceActions, RebalanceResult> allocate(RebalanceState rebalanceState) {
+		Map<String, BigDecimal> asks = rebalanceState.getControlAccount().getStock()//
+				.filter(s -> s.getQuantity().compareTo(BigDecimal.ZERO) > 0)//
+				.map(s -> Tuple.of(s.getInstrumentId(), s.getPrice())).collect(HashMap.collector());
+		Map<String, BigDecimal> bids = rebalanceState.getControlAccount().getStock()//
+				.filter(s -> s.getQuantity().compareTo(BigDecimal.ZERO) < 0)//
+				.map(s -> Tuple.of(s.getInstrumentId(), s.getPrice())).collect(HashMap.collector());
+		try {
+			// TODO: handle buy and sell sides
+			List<Tuple2<Fund, Map<String, BigDecimal>>> allocations = rebalanceState.getFunds()
+					.map(f -> Tuple.of(f, getQuantityDelta(f, asks)));
+
+			/*
+			 * Map<String, BigDecimal> delta = allocations.map(t -> t._2)//
+			 * .reduceOption((m1, m2) -> m1.merge(m2, (a, b) -> a.add(b)))//
+			 * .getOrElse(HashMap.empty());
+			 */
+
+			return Either.right(RebalanceResult.builder()
+					.allocations(allocations
+							.<Tuple3<Fund, String, BigDecimal>>flatMap(
+									i -> i._2.toStream().map(j -> Tuple.of(i._1, j._1, j._2)))
+							.map(a -> Allocation.builder()//
+									.clientAccount(a._1.getAccountId())//
+									.instrumentId(a._2)//
+									.quantityDelta(a._3)//
+									.price(asks.get(a._2)
+											.getOrElseThrow(() -> new AskPriceNotFound(
+													"could not find ask price for instrument " + a._2)))
+									.build()))
+					.build());
+
+			// TODO: handle issue trades if not enough assets
+		} catch (AskPriceNotFound e) {
+			return Either.<RebalanceActions, RebalanceState>right(rebalanceState)//
+					.flatMap(c -> checkMissingPrices(c))//
+					.map(rs -> Tuple.of(rs, estimateAggregateDelta(rs)))//
+					.flatMap(c -> checkQuotes(c._1, c._2))//
+					.flatMap(c -> Either.right(RebalanceResult.NOTHING));//TODO: we should never get here
+		}
+
 	}
 
 	@Value(staticConstructor = "of")
-	public static class AggregateDelta{
-		private Map<String,BigDecimal> deltaByInstrument;
-	}
-	//Instrument->QuantityDiff
-	public static AggregateDelta estimateAggregateDelta(RebalanceState rebalanceState) {
-		
-		Map<String,BigDecimal> asks= rebalanceState.getMarketPrices().map(mp -> Tuple.of(mp.getInstrumentId(),mp.getAsk()))//
-			.collect(HashMap.collector());
-		return AggregateDelta.of(rebalanceState.getFunds().map(f -> getQuantityDelta(f, asks)).reduceOption((m1,m2)->m1.merge(m2, (a,b)->a.add(b)))//
-			.getOrElse(HashMap.empty()));
+	public static class AggregateDelta {
+		private Map<String, BigDecimal> deltaByInstrument;
 	}
 
-	private static Map<String, BigDecimal> getQuantityDelta(Fund f, Map<String, BigDecimal> prices) {
-		Map<String,BigDecimal> quantityTargetRatiosByInstrument = f.getPortfolio().getItems()//
-			.map(a -> Tuple.of(a.getInstrumentId(), a.getQuantityRatio()))//
-			.collect(HashMap.collector());
-		Map<String,BigDecimal> valueByInstrument=quantityTargetRatiosByInstrument//
-				.map((k,v)->Tuple.of(k,v.multiply(prices.get(k)//
-						.getOrElseThrow(()->new RuntimeException("getQuantityDelta failed to find price for "+k)))));
-		valueByInstrument=normalise(valueByInstrument, f.getAvailableToInvest(), MONEY_DOWN);
-		Map<String,BigDecimal> quantityByInstrument = valueByInstrument.map((k,v)->Tuple.of(k,v.divide(prices.get(k)//
-				.getOrElseThrow(()->new RuntimeException("getQuantityDelta failed to find price for "+k)),QUANTITY_DOWN)));
+	// Instrument->QuantityDiff
+	public static AggregateDelta estimateAggregateDelta(RebalanceState rebalanceState) {
+
+		Map<String, BigDecimal> asks = rebalanceState.getMarketPrices()
+				.map(mp -> Tuple.of(mp.getInstrumentId(), mp.getAsk()))//
+				.collect(HashMap.collector());
+		return AggregateDelta.of(rebalanceState.getFunds().map(f -> getQuantityDelta(f, asks))
+				.reduceOption((m1, m2) -> m1.merge(m2, (a, b) -> a.add(b)))//
+				.getOrElse(HashMap.empty()));
+	}
+
+	private static Map<String, BigDecimal> getQuantityDelta(Fund f, Map<String, BigDecimal> askPrices) {
+		Map<String, BigDecimal> quantityTargetRatiosByInstrument = f.getPortfolio().getItems()//
+				.map(a -> Tuple.of(a.getInstrumentId(), a.getQuantityRatio()))//
+				.collect(HashMap.collector());
+		Map<String, BigDecimal> valueByInstrument = quantityTargetRatiosByInstrument//
+				.map((k, v) -> Tuple.of(k, v.multiply(askPrices.get(k)//
+						.getOrElseThrow(
+								() -> new AskPriceNotFound("getQuantityDelta failed to find price for " + k)))));
+		valueByInstrument = normalise(valueByInstrument, f.getAvailableToInvest(), MONEY_DOWN);
+		Map<String, BigDecimal> quantityByInstrument = valueByInstrument.map((k, v) -> Tuple.of(k,
+				v.divide(askPrices.get(k)//
+						.getOrElseThrow(() -> new AskPriceNotFound("getQuantityDelta failed to find price for " + k)),
+						QUANTITY_DOWN)));
 		return quantityByInstrument;
 	}
 
-	private static Map<String, BigDecimal> normalise(Map<String, BigDecimal> map, BigDecimal targetSum, MathContext mathContext) {
-		BigDecimal sum = map.values().reduce((a,b)->a.add(b));
-		return map.map((k,v)->Tuple.of(k,targetSum.multiply(v).divide(sum,mathContext)));
+	private static Map<String, BigDecimal> normalise(Map<String, BigDecimal> map, BigDecimal targetSum,
+			MathContext mathContext) {
+		BigDecimal sum = map.values().reduce((a, b) -> a.add(b));
+		return map.map((k, v) -> Tuple.of(k, targetSum.multiply(v).divide(sum, mathContext)));
 	}
 
 	private Either<RebalanceActions, RebalanceState> checkQuotes(RebalanceState c, AggregateDelta delta) {
 		// TODO check if we already have quotes and if they are big enough
 		return Either.left(QuoteRequests.of(
-				delta.getDeltaByInstrument().map((k,v)->Tuple.of(k, toQuoteRequest(k,v,c))).values()
-				.toList()));
+				delta.getDeltaByInstrument().map((k, v) -> Tuple.of(k, toQuoteRequest(k, v, c))).values().toList()));
 	}
-	
+
 	QuoteRequest toQuoteRequest(String instrumentId, BigDecimal quantity, RebalanceState c) {
-		return QuoteRequest.of(instrumentId,toQuoteRequestQuantity(quantity,c.getConfig().getOverSizeQuoteRatio()));
+		return QuoteRequest.of(instrumentId, toQuoteRequestQuantity(quantity, c.getConfig().getOverSizeQuoteRatio()));
 	}
-	
+
 	private int toQuoteRequestQuantity(BigDecimal quantity, BigDecimal overSizeQuoteRatio) {
 		return quantity.multiply(BigDecimal.ONE.add(overSizeQuoteRatio)).round(QUOTE_REQUEST_UP).intValueExact();
 	}
@@ -111,16 +165,11 @@ public class RebalancerImpl implements Rebalancer {
 		List<String> pricedInstruments = current.getMarketPrices().map(MarketPrice::getInstrumentId);
 		MarketPriceRequests requestMarketData = MarketPriceRequests//
 				.builder()//
-				.requests(current.getFunds()
-						.map(Fund::getPortfolio)
-						.flatMap(Portfolio::getItems)
-						.map(PortfolioItem::getInstrumentId)
-						.distinct()
-						.filter(not(pricedInstruments::contains))
-						.map(MarketPriceRequest::of)
-						)
+				.requests(current.getFunds().map(Fund::getPortfolio).flatMap(Portfolio::getItems)
+						.map(PortfolioItem::getInstrumentId).distinct().filter(not(pricedInstruments::contains))
+						.map(MarketPriceRequest::of))
 				.build();
-		if(!requestMarketData.getRequests().isEmpty()) {
+		if (!requestMarketData.getRequests().isEmpty()) {
 			return Either.left(requestMarketData);
 		} else {
 			return Either.right(current);
@@ -129,12 +178,12 @@ public class RebalancerImpl implements Rebalancer {
 
 	private boolean fundNeedsAction(Fund f, RebalanceConfig config) {
 		return fundNeedsCachChange(f, config);
-		//TODO add rebalance check
+		// TODO add rebalance check
 	}
 
 	private boolean fundNeedsCachChange(Fund f, RebalanceConfig config) {
-		//TODO: add some hysteresis here (from config? minInvestAmount minDivest?)
-		return f.getAvailableToInvest().compareTo(config.getMaximumTolerableCash())>0;
+		// TODO: add some hysteresis here (from config? minInvestAmount minDivest?)
+		return f.getAvailableToInvest().compareTo(config.getMaximumTolerableCash()) > 0;
 	}
 
 }

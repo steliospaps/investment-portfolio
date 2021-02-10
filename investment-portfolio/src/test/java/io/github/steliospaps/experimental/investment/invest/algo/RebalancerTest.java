@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import io.github.steliospaps.experimental.investment.invest.rebalance.RebalancerImpl;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.ControlAccount;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.FractionalAccount;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.Fund;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.MarketPrice;
@@ -30,10 +31,12 @@ class RebalancerImplTest {
 			RebalanceState state = RebalanceState.builder()
 					.funds(List.of(Fund.builder()//
 							.portfolio(porfolio1)//
+							.accountId("accountid1")//
 							.availableToInvest(valueOf(100))//
 							.build()))//
 					.marketPrices(List.of(MarketPrice.of(INSTRUMENT1, valueOf(19), valueOf(20))))//
 					.fractionalAccount(FractionalAccount.builder().build())//
+					.controlAccount(ControlAccount.builder().build())//
 					.build();
 			RebalancerImpl.AggregateDelta result = RebalancerImpl.estimateAggregateDelta(state);
 			assertEquals(HashMap.of(INSTRUMENT1,valueOf(5)),result.getDeltaByInstrument());
@@ -48,12 +51,14 @@ class RebalancerImplTest {
 			RebalanceState state = RebalanceState.builder()
 					.funds(List.of(Fund.builder()//
 							.portfolio(porfolio1)//
+							.accountId("account1")//
 							.availableToInvest(valueOf(100))//
 							.build()))//
 					.marketPrices(List.of(
 							MarketPrice.of(INSTRUMENT1, valueOf(19), valueOf(20)),
 							MarketPrice.of(INSTRUMENT2, valueOf(9), valueOf(10))
 							))//
+					.controlAccount(ControlAccount.builder().build())//
 					.fractionalAccount(FractionalAccount.builder().build())//
 					.build();
 			RebalancerImpl.AggregateDelta result = RebalancerImpl.estimateAggregateDelta(state);

@@ -1,15 +1,20 @@
 package io.github.steliospaps.experimental.investment.invest.bdd;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static io.vavr.Predicates.*;
 import static io.vavr.API.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
+
+import org.hamcrest.collection.IsIterableContainingInAnyOrder;
+import org.hamcrest.core.IsIterableContaining;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java8.En;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.ControlAccount;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.FractionalAccount;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.Fund;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.MarketPrice;
@@ -18,6 +23,7 @@ import io.github.steliospaps.experimental.investment.invest.rebalance.state.Port
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceConfig;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceState;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.SystemAccountStockItem;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.SystemAccountStockItemWithPrice;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceConfig.RebalanceConfigBuilder;
 import io.github.steliospaps.experimental.investment.invest.rebalance.Rebalancer;
 import io.github.steliospaps.experimental.investment.invest.rebalance.actions.MarketPriceRequest;
@@ -25,6 +31,7 @@ import io.github.steliospaps.experimental.investment.invest.rebalance.actions.Ma
 import io.github.steliospaps.experimental.investment.invest.rebalance.actions.QuoteRequest;
 import io.github.steliospaps.experimental.investment.invest.rebalance.actions.QuoteRequests;
 import io.github.steliospaps.experimental.investment.invest.rebalance.actions.RebalanceActions;
+import io.github.steliospaps.experimental.investment.invest.rebalance.result.Allocation;
 import io.github.steliospaps.experimental.investment.invest.rebalance.result.RebalanceResult;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
@@ -41,6 +48,7 @@ public class PortfolioSteps implements En {
 	private List<MarketPrice> marketPrices = List.empty();
 	private Either<RebalanceActions, RebalanceResult> rebalanceResult;
 	private FractionalAccount fractionalAccount = FractionalAccount.builder().build();
+	private ControlAccount controlAccount = ControlAccount.builder().build();
 
 	@Autowired
 	public PortfolioSteps(Rebalancer rebalancer) {
@@ -60,6 +68,35 @@ public class PortfolioSteps implements En {
 				.instrumentId(row.get("instrumentId"))//
 				.quantity(new BigDecimal(row.get("quantity"))).build());
 
+		DataTableType((java.util.Map<String, String> row) -> SystemAccountStockItemWithPrice.of(
+				row.get("instrumentId"),//
+				new BigDecimal(row.get("quantity")),
+				new BigDecimal(row.get("price"))));
+
+		DataTableType((java.util.Map<String, String> row) -> Allocation.builder()//
+				.clientAccount(row.get("to"))//
+				.instrumentId(row.get("instrumentId"))//
+				.quantityDelta(new BigDecimal(row.get("quantity delta")))
+				.price(new BigDecimal(row.get("price")))//
+				.build());
+
+			Given("control account holdings:", (io.cucumber.datatable.DataTable dataTable) -> {
+				controlAccount=ControlAccount.builder().stock(List.ofAll(dataTable.asList(SystemAccountStockItemWithPrice.class)))
+						.build();
+			});
+
+
+			Then("there are allocations:", (io.cucumber.datatable.DataTable dataTable) -> {
+				List<Allocation> expected = List.ofAll(dataTable.asList(Allocation.class));
+				List<Allocation> actual = rebalanceResult.map(i -> i.getAllocations()).getOrElse(List.empty());
+				assertThat("actual="+actual,
+						actual,
+						IsIterableContainingInAnyOrder.containsInAnyOrder(expected.toJavaArray()));
+			});
+
+
+
+		
 		Given("fractional account with:", (DataTable dt) -> {
 			fractionalAccount = FractionalAccount.builder().stock(List.ofAll(dt.asList(SystemAccountStockItem.class)))
 					.build();
@@ -72,6 +109,7 @@ public class PortfolioSteps implements En {
 
 		Given("fund {word} with portfolio {word}", (String fundId, String portfolioId) -> {
 			funds = funds.put(fundId, Fund.builder()//
+					.accountId(fundId)//
 					.portfolio(portfolios.get(portfolioId).get()));
 		});
 
@@ -92,6 +130,7 @@ public class PortfolioSteps implements En {
 					.marketPrices(marketPrices)//
 					.config(toRebalancerConfig(config))//
 					.fractionalAccount(fractionalAccount)//
+					.controlAccount(controlAccount)//
 					.build());
 		});
 

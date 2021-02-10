@@ -18,5 +18,7 @@ public class RebalanceState {
 	private RebalanceConfig config = RebalanceConfig.builder().build();
 	@NonNull
 	private FractionalAccount fractionalAccount;
+	@NonNull
+	private ControlAccount controlAccount;
 	
 }
