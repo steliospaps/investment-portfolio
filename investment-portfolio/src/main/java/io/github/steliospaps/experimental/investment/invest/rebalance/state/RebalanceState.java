@@ -15,6 +15,8 @@ public class RebalanceState {
 	@Default
 	private List<MarketPrice> marketPrices = List.empty();
 	@Default
+	private List<Quote> quotes = List.empty();
+	@Default
 	private RebalanceConfig config = RebalanceConfig.builder().build();
 	@NonNull
 	private FractionalAccount fractionalAccount;
