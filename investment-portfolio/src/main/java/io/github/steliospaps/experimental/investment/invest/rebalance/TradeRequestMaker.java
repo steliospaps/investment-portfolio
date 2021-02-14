@@ -10,7 +10,6 @@ import io.github.steliospaps.experimental.investment.invest.rebalance.state.Quot
 import io.vavr.collection.List;
 import io.vavr.collection.Map;
 import io.vavr.control.Option;
-import lombok.NonNull;
 
 public class TradeRequestMaker {
 

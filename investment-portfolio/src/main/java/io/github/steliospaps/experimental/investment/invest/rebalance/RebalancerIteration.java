@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import io.github.steliospaps.experimental.investment.invest.rebalance.actions.RebalanceAction;
-import io.github.steliospaps.experimental.investment.invest.rebalance.actions.TradeRequest;
 import io.github.steliospaps.experimental.investment.invest.rebalance.pricing.MarketDataPricer;
 import io.github.steliospaps.experimental.investment.invest.rebalance.pricing.Pricer;
 import io.github.steliospaps.experimental.investment.invest.rebalance.pricing.QuoteRequestEstimator;
@@ -16,17 +15,12 @@ import io.github.steliospaps.experimental.investment.invest.rebalance.state.Fund
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceConfig;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceState;
 import io.vavr.Tuple;
-import io.vavr.Tuple2;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 import io.vavr.collection.Map;
 import io.vavr.collection.Seq;
 import io.vavr.control.Either;
-import io.vavr.control.Option;
-import lombok.NonNull;
-import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 public class RebalancerIteration {
 
 	/**
