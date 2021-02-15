@@ -130,3 +130,29 @@ Feature: Simple rebalance actions
       | fund1 | instrument1  |             25 |   1.0 |
       | fund1 | instrument2  |           37.5 |   2.0 |
     And rebalancer is done
+
+  Scenario: Only Buy Allocation:. at 40%-60% split with asks 1,2 100GBP will be invested \
+    as 25GBP,75GBP Control account holdings get allocated, and left over moved to fractional account
+
+    Given market prices:
+      | instrumentId | bid  | ask  |
+      | instrument1  | 0.89 | 1.01 |
+      | instrument2  | 0.79 | 1.99 |
+    And quotes:
+      | quoteId | instrumentId | bid | ask |
+      | quote1a | instrument1  |     | 1.0 |
+      | quote2a | instrument2  |     | 2.0 |
+    And control account holdings:
+      | instrumentId | quantity | price |
+      | instrument1  |       25 |   1.0 |
+      | instrument2  |       38 |   2.0 |
+    And fund fund1 with portfolio portfolio1
+    And that fund fund1 has 100.00 available to invest
+    When the rebalancer runs
+    Then there are no actions
+    And there are allocations:
+      | to    | instrumentId | quantity delta | price |
+      | fund1 | instrument1  |             25 |   1.0 |
+      | fund1 | instrument2  |           37.5 |   2.0 |
+      |       | instrument2  |            0.5 |   2.0 |
+    And rebalancer is done

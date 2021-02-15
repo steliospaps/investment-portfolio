@@ -20,6 +20,7 @@ import io.vavr.collection.List;
 import io.vavr.collection.Map;
 import io.vavr.collection.Seq;
 import io.vavr.control.Either;
+import io.vavr.control.Option;
 
 public class RebalancerIteration {
 
@@ -56,6 +57,7 @@ public class RebalancerIteration {
 		controlAccount = current.getControlAccount();
 
 		tradeRequestMaker = new TradeRequestMaker(current.getQuotes(), quoteRequestEstimator);
+
 	}
 
 	public Either<List<RebalanceAction>, RebalanceResult> rebalance() {
@@ -89,27 +91,52 @@ public class RebalancerIteration {
 						.price(a._4)//
 						.build()))//
 				.flatMap(list -> requestTradesIfNotEnoughQuantity(list))//
-				.<RebalanceResult>map(
+				.map(allocations2 -> addFractionalAcountTrades(allocations2)).<RebalanceResult>map(
 						allocations2 -> RebalanceResult.builder().allocations(allocations2.toList()).build());
 
 	}
 
+	private Seq<Allocation> addFractionalAcountTrades(Seq<Allocation> allocations) {
+		HashMap<String, BigDecimal> availableQuantityByInstrument = controlAccount.getStock()
+				.map(s -> Tuple.of(s.getInstrumentId(), s.getQuantity())).collect(HashMap.collector());
+		
+		return allocations.groupBy(a -> a.getInstrumentId()).mapValues(l -> l//
+				.map(Allocation::getQuantityDelta)//
+				.reduce((a, b) -> a.add(b)))//
+				.toStream()//
+				.flatMap(tup -> {
+					String instrumentId = tup._1;
+					BigDecimal allocatedQty = tup._2;
+					return availableQuantityByInstrument.get(instrumentId)//
+							.map(controlAccountQty -> controlAccountQty.subtract(allocatedQty))//
+							.filter(leftOver -> leftOver.compareTo(BigDecimal.ZERO)!=0)//
+							.map(leftOver -> Allocation.builder()//
+									.clientAccount(null)// fractional account
+									.quantityDelta(leftOver)//
+									.instrumentId(instrumentId)//
+									.price(quotesPricer.getAsk(instrumentId)//
+											.getOrElseThrow(() -> new RuntimeException(
+													"there should be an ask price for instrument " + instrumentId)))//
+									.build());
+							 // TODO deal with trading only from the fractional account here
+				}).appendAll(allocations);
+	}
+
 	private Either<List<RebalanceAction>, Seq<Allocation>> requestTradesIfNotEnoughQuantity(
 			Seq<Allocation> allocations) {
-		HashMap<String, BigDecimal> availableByInstrument = controlAccount.getStock()
+		HashMap<String, BigDecimal> availableQuantityByInstrument = controlAccount.getStock()
 				.map(s -> Tuple.of(s.getInstrumentId(), s.getQuantity())).collect(HashMap.collector());
-
+		
 		return Either.sequence(allocations.groupBy(a -> a.getInstrumentId())//
 				.mapValues(l -> l//
 						.map(Allocation::getQuantityDelta)//
 						.reduce((a, b) -> a.add(b)))//
 				.toStream()//
-				.map(tup -> availableByInstrument.get(tup._1)//
+				.map(tup -> availableQuantityByInstrument.get(tup._1)//
 						.map(tradeQuantity -> canAllocate(tradeQuantity, tup._2) ? Either.right(true)// ignored
 								: Either.left(tradeRequestMaker.makeRequest(tup._1, tup._2))// if we cannot allocate
-										.mapLeft(RebalanceAction
-												.addNarrative(":trade ("+tradeQuantity
-														+") not big enough for allocation ("+tup._2+")")))
+										.mapLeft(RebalanceAction.addNarrative(":trade (" + tradeQuantity
+												+ ") not big enough for allocation (" + tup._2 + ")")))
 						.toEither(tradeRequestMaker.makeRequest(tup._1, tup._2)
 								.map(a -> a.withNarrative(":could not find trade during allocation ")))// either if we
 																										// cannot find
