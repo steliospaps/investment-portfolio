@@ -11,17 +11,22 @@ import io.github.steliospaps.experimental.investment.invest.rebalance.pricing.Qu
 import io.github.steliospaps.experimental.investment.invest.rebalance.result.Allocation;
 import io.github.steliospaps.experimental.investment.invest.rebalance.result.RebalanceResult;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.ControlAccount;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.FractionalAccount;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.Fund;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceConfig;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceState;
 import io.vavr.Tuple;
+import io.vavr.Tuple2;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 import io.vavr.collection.Map;
 import io.vavr.collection.Seq;
 import io.vavr.control.Either;
 import io.vavr.control.Option;
+import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class RebalancerIteration {
 
 	/**
@@ -35,17 +40,19 @@ public class RebalancerIteration {
 	 */
 	private static final MathContext QUANTITY_DOWN = new MathContext(7, RoundingMode.DOWN);
 
-	private List<Fund> fundsRequiringActions;
+	private @NonNull List<Fund> fundsRequiringActions;
 
-	private QuotesPricer quotesPricer;
+	private @NonNull QuotesPricer quotesPricer;
 
-	private MarketDataPricer marketDataPricer;
+	private @NonNull MarketDataPricer marketDataPricer;
 
-	private Map<String, Either<List<RebalanceAction>, BigDecimal>> estimatedAgregateDelta;
+	private @NonNull Map<String, Either<List<RebalanceAction>, BigDecimal>> estimatedAgregateDelta;
 
-	private ControlAccount controlAccount;
+	private @NonNull ControlAccount controlAccount;
 
-	private TradeRequestMaker tradeRequestMaker;
+	private @NonNull TradeRequestMaker tradeRequestMaker;
+
+	private @NonNull FractionalAccount fractionalAccount;
 
 	public RebalancerIteration(RebalanceState current) {
 		fundsRequiringActions = current.getFunds().filter(f -> fundNeedsAction(f, current.getConfig()));
@@ -55,6 +62,7 @@ public class RebalancerIteration {
 				current.getConfig().getOverSizeQuoteRatio());
 		quotesPricer = new QuotesPricer(current.getQuotes(), quoteRequestEstimator);
 		controlAccount = current.getControlAccount();
+		fractionalAccount = current.getFractionalAccount();
 
 		tradeRequestMaker = new TradeRequestMaker(current.getQuotes(), quoteRequestEstimator);
 
@@ -108,6 +116,7 @@ public class RebalancerIteration {
 					String instrumentId = tup._1;
 					BigDecimal allocatedQty = tup._2;
 					return availableQuantityByInstrument.get(instrumentId)//
+							.orElse(()->Option.of(BigDecimal.ZERO))//zero if no trades (to be here we assume that the fractional has enough
 							.map(controlAccountQty -> controlAccountQty.subtract(allocatedQty))//
 							.filter(leftOver -> leftOver.compareTo(BigDecimal.ZERO)!=0)//
 							.map(leftOver -> Allocation.builder()//
@@ -118,39 +127,56 @@ public class RebalancerIteration {
 											.getOrElseThrow(() -> new RuntimeException(
 													"there should be an ask price for instrument " + instrumentId)))//
 									.build());
-							 // TODO deal with trading only from the fractional account here
 				}).appendAll(allocations);
 	}
 
 	private Either<List<RebalanceAction>, Seq<Allocation>> requestTradesIfNotEnoughQuantity(
 			Seq<Allocation> allocations) {
-		HashMap<String, BigDecimal> availableQuantityByInstrument = controlAccount.getStock()
-				.map(s -> Tuple.of(s.getInstrumentId(), s.getQuantity())).collect(HashMap.collector());
+		Map<String, BigDecimal> availableQuantityByInstrument = controlAccount.getStock()
+				.map(s -> Tuple.of(s.getInstrumentId(), s.getQuantity()))
+				.appendAll(fractionalAccount.getStock()//
+						.map(s -> Tuple.of(s.getInstrumentId(), s.getQuantity())))
+				.groupBy(t2 -> t2._1)//
+				.mapValues(l -> l.map(Tuple2::_2).reduce((a,b)->a.add(b)));
 		
-		return Either.sequence(allocations.groupBy(a -> a.getInstrumentId())//
+		log.info("availableQuantityByInstrument={}",availableQuantityByInstrument);
+		List<RebalanceAction> actions = allocations.groupBy(a -> a.getInstrumentId())//
 				.mapValues(l -> l//
 						.map(Allocation::getQuantityDelta)//
 						.reduce((a, b) -> a.add(b)))//
 				.toStream()//
-				.map(tup -> availableQuantityByInstrument.get(tup._1)//
-						.map(tradeQuantity -> canAllocate(tradeQuantity, tup._2) ? Either.right(true)// ignored
-								: Either.left(tradeRequestMaker.makeRequest(tup._1, tup._2))// if we cannot allocate
-										.mapLeft(RebalanceAction.addNarrative(":trade (" + tradeQuantity
-												+ ") not big enough for allocation (" + tup._2 + ")")))
-						.toEither(tradeRequestMaker.makeRequest(tup._1, tup._2)
-								.map(a -> a.withNarrative(":could not find trade during allocation ")))// either if we
-																										// cannot find
-																										// trade
-				))//
-				.mapLeft(RebalanceActionUtil::combineActions)//
-				.map(ignored -> allocations);// if still right we proceed with the allocations
+				.map(tup -> requestTradesIfAllocationBiggerThanAvailableQty(availableQuantityByInstrument, tup._1, tup._2))//
+				.reduce((a1,a2) -> RebalanceActionUtil.combineActions(a1,a2));
+				
+		if(actions.isEmpty()) {
+			return Either.right(allocations);
+		} else {
+			return Either.left(actions);
+		}
+	}
+
+	private List<RebalanceAction> requestTradesIfAllocationBiggerThanAvailableQty(Map<String, BigDecimal> availableQuantityByInstrument,
+			String instrumentId, BigDecimal allocationQuantity) {
+		return availableQuantityByInstrument.get(instrumentId)//
+				.map(tradeQuantity -> canAllocate(tradeQuantity, allocationQuantity) ? List.<RebalanceAction>of()// 
+						: tradeRequestMaker.makeRequest(instrumentId, allocationQuantity)// if we cannot allocate
+								.map(r -> r.withNarrative(":trade (" + tradeQuantity
+										+ ") not big enough for allocation (" + allocationQuantity + ")")))//
+				.getOrElse(()-> tradeRequestMaker.makeRequest(instrumentId, allocationQuantity)
+						.map(a -> a.withNarrative(":could not find trade during allocation ")));
 	}
 
 	private boolean canAllocate(BigDecimal tradeQuantity, BigDecimal allocationQuantity) {
+		log.info("comparing tradeQuantity={} allocationQuantity={}", tradeQuantity, allocationQuantity);
 		if (isBuy(allocationQuantity)) {
-			return allocationQuantity.compareTo(tradeQuantity) <= 0;
+			
+			boolean result = allocationQuantity.compareTo(tradeQuantity) <= 0;
+			log.info("isBuy=true result={}",result);
+			return result;
 		} else {
-			return allocationQuantity.compareTo(tradeQuantity) >= 0;
+			boolean result = allocationQuantity.compareTo(tradeQuantity) >= 0;
+			log.info("isBuy=false result={}",result);
+			return result;
 		}
 	}
 

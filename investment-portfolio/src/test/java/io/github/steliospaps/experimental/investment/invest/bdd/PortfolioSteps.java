@@ -184,7 +184,7 @@ public class PortfolioSteps {
 
 	@Then("there are no allocations")
 	public void then_there_are_no_allocations() {
-		assertEquals(0, (int) rebalanceResult.map(i -> i.getAllocations().size()).getOrElse(0));
+		assertEquals(List.of(), rebalanceResult.map(i -> i.getAllocations()).getOrElse(List.of()));
 	}
 
 	@Then("there are no actions")

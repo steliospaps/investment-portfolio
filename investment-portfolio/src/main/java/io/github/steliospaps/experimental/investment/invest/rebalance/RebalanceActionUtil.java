@@ -8,6 +8,9 @@ import io.vavr.control.Either;
 public class RebalanceActionUtil {
 	private RebalanceActionUtil() {
 	}
+	public static List<RebalanceAction> combineActions(List<RebalanceAction> a1, List<RebalanceAction>  a2){
+		return combineActions(List.of(a1,a2));
+	}
 	
 	public static List<RebalanceAction> combineActions(Seq<List<RebalanceAction>> actions){
 		return actions.flatMap(i -> i.toStream()).distinct().toList();

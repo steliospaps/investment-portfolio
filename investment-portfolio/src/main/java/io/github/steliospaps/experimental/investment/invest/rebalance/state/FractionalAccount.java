@@ -7,5 +7,5 @@ import lombok.Value;
 @Value
 @Builder
 public class FractionalAccount {
-	private List<SystemAccountStockItemWithPrice> stock;
+	private List<SystemAccountStockItem> stock;
 }

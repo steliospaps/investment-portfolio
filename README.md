@@ -13,8 +13,10 @@ Transactions happen on a control account, the client accounts do not touch the m
 
 Market orders should be also minimal as charges can accumulate on the control account. (settlement costs where no netting is taking place)
 ## accounts cross
-if an account is selling and another is buying they can transact with each other.
-
+If an account is selling and another is buying they can transact with each other.
+The price of that transaction if fixed at the mid of the best quote Buy and best quote Sell.
+This will not change even of trading on those quotes is refused. If no trading takes place and we abort,
+the crossing trade will not take place.
 ## net sell before net buy
 Sell on the market before buying, so that any slippage will not leave us short.
 
@@ -26,7 +28,7 @@ Any excess quantity is stored in a fractional account, that can be used to top-u
 The fractional account will trade at best quote on the direction trading.
 
 ## rebalancing
-Periodically the target weights change. Or isntruments might be added or removed.
+Periodically the target weights change. Or instruments might be added or removed.
 
 ## divest only instruments
 periodically instruments are replaced. Optionally the old instrument is kept, but it is the one sold first.
