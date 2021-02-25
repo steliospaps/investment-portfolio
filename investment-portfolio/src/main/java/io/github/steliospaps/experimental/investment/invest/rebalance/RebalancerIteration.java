@@ -105,7 +105,7 @@ public class RebalancerIteration {
 	}
 
 	private Seq<Allocation> addFractionalAcountTrades(Seq<Allocation> allocations) {
-		HashMap<String, BigDecimal> availableQuantityByInstrument = controlAccount.getStock()
+		HashMap<String, BigDecimal> availableQuantityByInstrument = controlAccount.getHoldings()
 				.map(s -> Tuple.of(s.getInstrumentId(), s.getQuantity())).collect(HashMap.collector());
 		
 		return allocations.groupBy(a -> a.getInstrumentId()).mapValues(l -> l//
@@ -132,9 +132,9 @@ public class RebalancerIteration {
 
 	private Either<List<RebalanceAction>, Seq<Allocation>> requestTradesIfNotEnoughQuantity(
 			Seq<Allocation> allocations) {
-		Map<String, BigDecimal> availableQuantityByInstrument = controlAccount.getStock()
+		Map<String, BigDecimal> availableQuantityByInstrument = controlAccount.getHoldings()
 				.map(s -> Tuple.of(s.getInstrumentId(), s.getQuantity()))
-				.appendAll(fractionalAccount.getStock()//
+				.appendAll(fractionalAccount.getHoldings()//
 						.map(s -> Tuple.of(s.getInstrumentId(), s.getQuantity())))
 				.groupBy(t2 -> t2._1)//
 				.mapValues(l -> l.map(Tuple2::_2).reduce((a,b)->a.add(b)));

@@ -2,12 +2,11 @@ package io.github.steliospaps.experimental.investment.invest.rebalance.state;
 
 import java.math.BigDecimal;
 
-import lombok.Builder;
 import lombok.Value;
 
-@Value
-@Builder
-public class SystemAccountStockItem {
+@Value(staticConstructor = "of")
+public class AccountHoldingItemWithPrice {
 	private String instrumentId;
 	private BigDecimal quantity;
+	private BigDecimal price;
 }

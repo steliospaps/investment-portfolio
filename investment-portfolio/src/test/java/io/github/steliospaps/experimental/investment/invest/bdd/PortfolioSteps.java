@@ -13,6 +13,7 @@ import io.cucumber.java.DataTableType;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.AccountHoldingItem;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.ControlAccount;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.FractionalAccount;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.Fund;
@@ -22,8 +23,7 @@ import io.github.steliospaps.experimental.investment.invest.rebalance.state.Port
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.Quote;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceConfig;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceState;
-import io.github.steliospaps.experimental.investment.invest.rebalance.state.SystemAccountStockItem;
-import io.github.steliospaps.experimental.investment.invest.rebalance.state.SystemAccountStockItemWithPrice;
+import io.github.steliospaps.experimental.investment.invest.rebalance.state.AccountHoldingItemWithPrice;
 import io.github.steliospaps.experimental.investment.invest.rebalance.state.RebalanceConfig.RebalanceConfigBuilder;
 import io.github.steliospaps.experimental.investment.invest.rebalance.Rebalancer;
 import io.github.steliospaps.experimental.investment.invest.rebalance.actions.MarketPriceRequest;
@@ -78,14 +78,14 @@ public class PortfolioSteps {
 	}
 
 	@DataTableType
-	public SystemAccountStockItem toSystemAccountStockItem(java.util.Map<String, String> row) {
-		return SystemAccountStockItem.builder().instrumentId(row.get("instrumentId"))//
+	public AccountHoldingItem toAccountHoldingItem(java.util.Map<String, String> row) {
+		return AccountHoldingItem.builder().instrumentId(row.get("instrumentId"))//
 				.quantity(new BigDecimal(row.get("quantity"))).build();
 	}
 
 	@DataTableType
-	public SystemAccountStockItemWithPrice toSystemAccountStockItemWithPrice(java.util.Map<String, String> row) {
-		return SystemAccountStockItemWithPrice.of(row.get("instrumentId"), //
+	public AccountHoldingItemWithPrice toAccountHoldingItemWithPrice(java.util.Map<String, String> row) {
+		return AccountHoldingItemWithPrice.of(row.get("instrumentId"), //
 				new BigDecimal(row.get("quantity")), new BigDecimal(row.get("price")));
 	}
 
@@ -137,13 +137,13 @@ public class PortfolioSteps {
 	@Given("control account holdings:")
 	public void given_account_holdings(io.cucumber.datatable.DataTable dataTable) {
 		rebalanceState = rebalanceState.controlAccount(ControlAccount.builder()
-				.stock(List.ofAll(dataTable.asList(SystemAccountStockItemWithPrice.class))).build());
+				.holdings(List.ofAll(dataTable.asList(AccountHoldingItemWithPrice.class))).build());
 	}
 
 	@Given("fractional account with:")
 	public void given_fractional_account_with(DataTable dt) {
 		rebalanceState = rebalanceState.fractionalAccount(FractionalAccount.builder()//
-				.stock(List.ofAll(dt.asList(SystemAccountStockItem.class))).build());
+				.holdings(List.ofAll(dt.asList(AccountHoldingItem.class))).build());
 	}
 
 	@Given("a portfolio {word} with targets:")
@@ -172,6 +172,11 @@ public class PortfolioSteps {
 	@Given("market prices:")
 	public void given_market_prices(DataTable dataTable) {
 		rebalanceState = rebalanceState.marketPrices(List.ofAll(dataTable.asList(MarketPrice.class)));
+	}
+
+	@Given("fund {word} has assets:")
+	public void fundFundHasAssets(String fundId, java.util.List<AccountHoldingItem> items) throws Throwable {
+		funds.get(fundId).get().holdings(List.ofAll(items));
 	}
 
 	@When("the rebalancer runs")
@@ -216,15 +221,17 @@ public class PortfolioSteps {
 
 	@Then("market prices are requested for:")
 	public void then_market_prices_are_requested(DataTable dt) {
-		List<RebalanceAction> actual = rebalanceResult.swap().get();
-		assertEquals(dt.asList(MarketPriceRequest.class), actual.map(i -> i.stripNarrative()).asJava(),
-				"actual=" + actual);
+		
+		assertEquals(dt.asList(MarketPriceRequest.class), rebalanceResult.swap().getOrElse(List.of())//
+				.map(i -> i.stripNarrative()).asJava(),
+				"rebalanceResult=" + rebalanceResult);
 	}
 
 	@Then("market quotes are requested for:")
 	public void then_market_quotes_are_requested(DataTable dt) {
-		List<RebalanceAction> actual = rebalanceResult.swap().get();
-		assertEquals(dt.asList(QuoteRequest.class), actual.map(i -> i.stripNarrative()).asJava(), "actual=" + actual);
+		assertEquals(dt.asList(QuoteRequest.class), 
+				rebalanceResult.swap().getOrElse(List.of())
+				.map(i -> i.stripNarrative()).asJava(), "rebalanceResult=" + rebalanceResult);
 	}
 
 	@Then("rebalancer is not done")
@@ -236,6 +243,7 @@ public class PortfolioSteps {
 	public void then_rebalancer_is_done() {
 		assertTrue(rebalanceResult.isRight());
 	}
+
 
 
 	private BigDecimal bigDecimalNullIfEmpty(String string) {

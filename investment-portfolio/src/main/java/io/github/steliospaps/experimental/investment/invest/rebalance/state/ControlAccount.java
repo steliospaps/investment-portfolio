@@ -9,5 +9,5 @@ import lombok.Value;
 @Builder
 public class ControlAccount {
 	@Default
-	private List<SystemAccountStockItemWithPrice> stock = List.empty();
+	private List<AccountHoldingItemWithPrice> holdings = List.empty();
 }
