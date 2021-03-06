@@ -21,19 +21,35 @@ public class TradeRequestMaker {
 		this.quotes = quotes.groupBy(Quote::getInstrumentId);
 	}
 
-	public List<RebalanceAction> makeRequest(String instrument, BigDecimal allocated) {
+	public List<RebalanceAction> makeRequest(String instrument, BigDecimal allocated, BigDecimal fractionalAvailableQuantity) {
 		return (RebalancerIteration.isBuy(allocated) ?
 				getBestAsk(instrument) : 
 					getBestBid(instrument))
-				.<TradeRequest>map(builder -> builder.quantity(calculateTradeRequestQuantity(allocated))//
+				.<TradeRequest>map(builder -> builder.quantity(calculateTradeRequestQuantity(allocated, fractionalAvailableQuantity))//
 						.build())//
 				.map(i -> List.<RebalanceAction>of(i))//
 				.getOrElse(()->quoteRequestEstimator.estimateQuoteRequest(instrument)
 						.map(a ->a.withNarrative("could not find valid quote while requesting trade")));
 	}
-	private static final RoundingMode TRADE_REQUEST_UP = RoundingMode.UP;
-	private int calculateTradeRequestQuantity(BigDecimal quantity) {
-		return quantity.setScale(0,TRADE_REQUEST_UP).intValueExact();
+	
+	private int calculateTradeRequestQuantity(BigDecimal quantity, BigDecimal fractionalAvailableQuantity) {
+		//TODO: this fractional logic is possible duplicate of the fractional allocation logic
+		
+		BigDecimal intPartOfTrade= quantity.setScale(0,RoundingMode.DOWN);
+		BigDecimal fractionalPartOfTrade = quantity.subtract(intPartOfTrade);
+		if(fractionalPartOfTrade.compareTo(BigDecimal.ZERO)>=0) {
+			if(fractionalAvailableQuantity.compareTo(fractionalPartOfTrade)>=0) {
+				return intPartOfTrade.intValueExact();
+			} else {
+				return intPartOfTrade.intValueExact()+1;
+			}
+		} else {
+			if(fractionalAvailableQuantity.subtract(BigDecimal.ONE).compareTo(fractionalPartOfTrade)>=0) {
+				return intPartOfTrade.intValueExact()-1;
+			} else {
+				return intPartOfTrade.intValueExact();
+			}			
+		}
 	}
 
 	

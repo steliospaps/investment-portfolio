@@ -27,11 +27,11 @@ public class QuotesPricer implements Pricer {
 	@Override
 	public Either<List<RebalanceAction>, BigDecimal> getBid(String instrumentId) {
 		return quotes.get(instrumentId)//
-				.map(l ->l.map(Quote::getBid)
+				.flatMap(l ->l.map(Quote::getBid)
 						.filter(i -> i!=null)//
-						.reduce((a,b)-> a.max(b)))//
+						.reduceOption((a,b)-> a.max(b)))//
 				.toEither(quoteRequestEstimator.estimateQuoteRequest(instrumentId))
-				.mapLeft(RebalanceAction.addNarrative("while getting a bid"));
+				.mapLeft(RebalanceAction.addNarrative("while getting a bid (quote)"));
 	}
 
 	@Override
@@ -41,7 +41,7 @@ public class QuotesPricer implements Pricer {
 						.filter(i -> i!=null)//
 						.reduceOption((a,b)-> a.min(b)))//
 				.toEither(quoteRequestEstimator.estimateQuoteRequest(instrumentId))
-				.mapLeft(RebalanceAction.addNarrative("while getting an ask"));
+				.mapLeft(RebalanceAction.addNarrative("while getting an ask (quote)"));
 	}
 
 }

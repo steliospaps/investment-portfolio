@@ -24,7 +24,7 @@ public class MarketDataPricer implements Pricer {
 		return prices.get(instrumentId)//
 				.flatMap(mp -> Option.of(mp.getBid()))//
 				.toEither(()-> List.of(
-						MarketPriceRequest.builder().instrumentId(instrumentId).build().withNarrative("while getting bid")));
+						MarketPriceRequest.builder().instrumentId(instrumentId).build().withNarrative("while getting a bid (estimate)")));
 	}
 
 	@Override
@@ -32,7 +32,7 @@ public class MarketDataPricer implements Pricer {
 		return prices.get(instrumentId)//
 				.flatMap(mp -> Option.of(mp.getAsk()))//
 				.toEither(()-> List.of(
-						MarketPriceRequest.builder().instrumentId(instrumentId).build().withNarrative("while getting ask")));
+						MarketPriceRequest.builder().instrumentId(instrumentId).build().withNarrative("while getting an ask (estimate)")));
 	}
 
 

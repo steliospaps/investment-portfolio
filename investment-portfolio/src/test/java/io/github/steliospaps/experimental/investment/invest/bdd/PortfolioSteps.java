@@ -194,7 +194,7 @@ public class PortfolioSteps {
 
 	@Then("there are no actions")
 	public void then_there_are_no_actions() {
-		assertTrue(rebalanceResult.isRight());
+		assertTrue(rebalanceResult.isRight(),"result="+rebalanceResult);
 	}
 
 	@Then("there are allocations:")
@@ -208,8 +208,8 @@ public class PortfolioSteps {
 	@Then("market trades are requested for:")
 	public void then_market_trades_are_requested(io.cucumber.datatable.DataTable dt) {
 
-		List<RebalanceAction> actual = rebalanceResult.swap().get();
-		assertEquals(dt.asList(TradeRequest.class), actual.map(i -> i.stripNarrative()).asJava(), "actual=" + actual);
+		List<RebalanceAction> actual = rebalanceResult.swap().getOrElse(List.of());
+		assertEquals(dt.asList(TradeRequest.class), actual.map(i -> i.stripNarrative()).asJava(), "rebalanceResult=" + rebalanceResult);
 
 	}
 
